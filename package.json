@@ -1,0 +1,11 @@
+{
+  "name": "university-evoting",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./assets/src/input.css -o ./assets/css/app.css --minify",
+    "watch:css": "tailwindcss -i ./assets/src/input.css -o ./assets/css/app.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
+  }
+}

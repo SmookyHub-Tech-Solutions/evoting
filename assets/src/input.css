@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  body { @apply bg-slate-100 text-slate-800; }
+  ::selection { @apply bg-blue-600/90 text-white; }
+  :focus-visible { outline: 2px solid theme('colors.blue.500'); outline-offset: 2px; }
+}
+
+@layer components {
+  .btn { @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold tracking-tight transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply bg-blue-600 text-white shadow-[0_8px_20px_-8px_rgb(37_99_235/.6)] hover:bg-blue-700 hover:shadow-[0_10px_24px_-8px_rgb(37_99_235/.7)] focus-visible:ring-blue-500; }
+  .btn-teal { @apply bg-teal-700 text-white shadow-[0_8px_20px_-8px_rgb(15_118_110/.6)] hover:bg-teal-800 focus-visible:ring-teal-600; }
+  .btn-outline { @apply border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-400; }
+  .btn-danger { @apply bg-red-600 text-white shadow-[0_8px_20px_-8px_rgb(220_38_38/.6)] hover:bg-red-700 focus-visible:ring-red-500; }
+  .btn-sm { @apply rounded-lg px-3 py-1.5 text-xs; }
+  .btn-lg { @apply rounded-xl px-6 py-3 text-base; }
+
+  .input { @apply block w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/15; }
+  .label { @apply mb-1.5 block text-[13px] font-semibold text-slate-700; }
+  .hint { @apply mt-1.5 text-xs leading-relaxed text-slate-500; }
+
+  .card { @apply rounded-2xl border border-slate-200/80 bg-white shadow-card; }
+  .card-hover { @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lift; }
+
+  .badge { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ring-1 ring-inset; }
+  .th { @apply whitespace-nowrap px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500; }
+  .td { @apply px-4 py-3.5 text-sm text-slate-700; }
+
+  .alert { @apply flex items-start gap-3 rounded-xl border px-4 py-3.5 text-sm leading-relaxed shadow-sm; }
+  .page-eyebrow { @apply text-xs font-bold uppercase tracking-[0.14em] text-blue-700; }
+  .empty-state { @apply card p-10 text-center sm:p-12; }
+  .stat-card { @apply card relative overflow-hidden p-5 sm:p-6; }
+  .quick-action { @apply card-hover card flex items-center gap-4 p-4 sm:p-5; }
+  .table-wrap { @apply card overflow-hidden; }
+  .form-section { @apply card p-5 sm:p-6; }
+}
+
+@layer utilities {
+  .animate-fade-up { animation: fade-up .45s ease-out both; }
+  .bg-grid-slate { background-image: linear-gradient(to right, rgb(15 42 67 / 0.06) 1px, transparent 1px), linear-gradient(to bottom, rgb(15 42 67 / 0.06) 1px, transparent 1px); background-size: 28px 28px; }
+  .bg-dots-white { background-image: radial-gradient(rgb(255 255 255 / 0.18) 1.2px, transparent 1.2px); background-size: 18px 18px; }
+  .text-balance { text-wrap: balance; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
