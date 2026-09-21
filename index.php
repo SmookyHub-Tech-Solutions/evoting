@@ -50,7 +50,14 @@ $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
         </span>
         <span class="text-[15px] font-bold tracking-tight"><?= e($inst) ?></span>
       </span>
-      <a class="btn btn-outline !border-white/20 !bg-white/10 !text-white backdrop-blur hover:!bg-white/20 btn-sm sm:!px-4 sm:!py-2 sm:!text-sm" href="<?= e(url($u ? home_for($u) : 'login.php')) ?>"><?= $u ? 'Go to dashboard →' : 'Sign in' ?></a>
+      <!-- Nav actions: light/dark switch (header stays navy in both modes) plus sign-in/dashboard link. -->
+      <div class="flex items-center gap-2">
+        <button type="button" data-theme-toggle aria-pressed="false" aria-label="Switch dark mode on or off" title="Switch dark mode on or off" class="rounded-xl p-2 text-slate-300 ring-1 ring-transparent transition hover:bg-white/10 hover:text-white hover:ring-white/15">
+          <span data-icon-moon><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></span>
+          <span data-icon-sun class="hidden"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17a5 5 0 100-10 5 5 0 000 10zM12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4l1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span>
+        </button>
+        <a class="btn btn-outline !border-white/20 !bg-white/10 !text-white backdrop-blur hover:!bg-white/20 btn-sm sm:!px-4 sm:!py-2 sm:!text-sm" href="<?= e(url($u ? home_for($u) : 'login.php')) ?>"><?= $u ? 'Go to dashboard →' : 'Sign in' ?></a>
+      </div>
     </nav>
     <!-- Welcome message: explains voting in 3 simple steps plus key promises. -->
   <div class="grid items-center gap-10 pb-16 pt-8 lg:grid-cols-[1.1fr_.9fr] lg:pb-24 lg:pt-12">
@@ -158,5 +165,7 @@ $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
     <p>Ballot secrecy protected · One student, one vote</p>
   </div>
 </footer>
+<!-- Shared behaviors: dark-mode toggle persistence (deferred so the page paints first). -->
+<script src="<?= e(url('assets/js/app.js')) ?>" defer></script>
 </body>
 </html>

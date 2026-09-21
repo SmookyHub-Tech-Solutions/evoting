@@ -40,6 +40,8 @@ function icon(string $n, string $c = 'h-5 w-5'): string
         'clock' => 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2',
         'alert' => 'M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z',
         'info' => 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 16v-4m0-4h.01',
+        'sun' => 'M12 17a5 5 0 100-10 5 5 0 000 10zM12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4l1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+        'moon' => 'M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z',
     ];
     return '<svg class="' . $c . '" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' . ($p[$n] ?? '') . '"/></svg>';
 }
@@ -183,7 +185,12 @@ function layout_start(string $title, string $active = '', string $subtitle = '')
           <?php if ($subtitle): ?><p class="truncate text-[13px] text-slate-500"><?= e($subtitle) ?></p><?php endif; ?>
         </div>
         <?php if ($u): ?>
-          <div class="ml-auto flex items-center gap-3">
+          <div class="ml-auto flex items-center gap-2">
+            <!-- Theme toggle: moon/sun button flips light/dark mode; choice is saved on this device (see app.js). -->
+            <button type="button" data-theme-toggle aria-pressed="false" aria-label="Switch dark mode on or off" title="Switch dark mode on or off" class="rounded-xl p-2 text-slate-500 ring-1 ring-transparent transition hover:bg-slate-100 hover:ring-slate-200 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:ring-slate-700">
+              <span data-icon-moon><?= icon('moon', 'h-5 w-5') ?></span>
+              <span data-icon-sun class="hidden"><?= icon('sun', 'h-5 w-5') ?></span>
+            </button>
             <div class="hidden text-right sm:block">
               <p class="text-[13px] font-semibold leading-tight text-slate-900"><?= e($u['name']) ?></p>
               <p class="text-xs text-slate-500"><?= e($u['student_id']) ?> · <?= $u['role'] === 'admin' ? 'Administrator' : 'Student' ?></p>

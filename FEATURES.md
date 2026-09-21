@@ -13,7 +13,7 @@ Single shared sign-in (`login.php`, User ID + password) for students and admins.
 | Review (step 2/2) | Read-only summary with avatars; explicit “cannot be changed” warning; back-to-edit vs secure-submit | `student/review.php` |
 | Confirmation | Success screen with **Confirmation ID** (`EVT-XXXXXXXX`), election + timestamp, printable receipt; secrecy note (ID proves participation, not choices) | `student/confirmation.php` |
 | Results | Election selector; total ballots + turnout % with progress bar; per-position bars, **Winner / Leading / Tied** badges, abstain count; provisional label while OPEN | `student/results.php`, `render_results()` in `includes/results.php` |
-| Profile | View name, User ID, department, email; change password (current + new + confirm, 8-char letters+numbers rule) | `student/profile.php` |
+| Profile | View name, User ID, department, email; change password with live 4-rule checklist (8+ chars, upper/lowercase, number) + match indicator | `student/profile.php` |
 | Landing page | Public election information (open/upcoming/closed cards with dates), sign-in CTA, secrecy guarantees | `index.php` |
 
 Voting rules enforced in UI **and** server-side:
@@ -42,7 +42,7 @@ Election lifecycle: `DRAFT` → `UPCOMING` → `OPEN` → `CLOSED`, plus `sync_e
 
 - SQLite auto-schema + seed demo data; `SEED_DEMO=false` in `includes/config.php` + deleting `data/evoting.sqlite` gives a clean start.
 - Works from any subfolder (`BASE_URL` detection in `includes/bootstrap.php`); `php -S localhost:8002` ready; XAMPP-ready.
-- Responsive layout with mobile sidebar + overlay (`assets/js/app.js`), print styles for receipts/results, empty states everywhere, pagination (`pager()`), `data-confirm` dialogs for destructive actions, `data-autosubmit` selects, password show/hide toggle.
+- Responsive layout with mobile sidebar + overlay (`assets/js/app.js`), dark mode toggle saved per device (defaults to OS setting), print styles for receipts/results, empty states everywhere, pagination (`pager()`), `data-confirm` dialogs for destructive actions, `data-autosubmit` selects, password show/hide toggle.
 - Demo seed: admin `admin` / `Admin@12345`; students `STU001`, `STU002`, `STU004`–`STU006` / `Student@123`; `STU003` inactive; one open demo election with President / Vice President / Treasurer races.
 
 ## 4. Security features
@@ -50,7 +50,7 @@ Election lifecycle: `DRAFT` → `UPCOMING` → `OPEN` → `CLOSED`, plus `sync_e
 | Threat | Protection | Code reference |
 |---|---|---|
 | SQL injection | PDO prepared statements everywhere; `ATTR_EMULATE_PREPARES=false`, `ERRMODE_EXCEPTION`; no string-interpolated SQL except whitelisted `ORDER/LIMIT` ints | `includes/db.php` (`db_run`, `db_all`, `db_one`, `db_val`) |
-| Password theft / weak passwords | `password_hash` / `password_verify`, `password_needs_rehash`; policy ≥8 chars with letters+numbers (`password_error()`); random temp passwords (`random_password()`); resets displayed once | `login.php`, `admin/voters.php`, `admin/users.php`, `student/profile.php`, `includes/bootstrap.php` |
+| Password theft / weak passwords | `password_hash` / `password_verify`, `password_needs_rehash`; policy ≥8 chars with uppercase + lowercase + number (`password_error()`); live checklist + match check on change-password form (server re-checks); random temp passwords (`random_password()`); resets displayed once | `login.php`, `admin/voters.php`, `admin/users.php`, `student/profile.php`, `includes/bootstrap.php` |
 | Brute force / credential stuffing | `login_attempts` table; **5 failures / 15 min per ID, 20 per IP**; 24 h cleanup; constant-time dummy hash check so timing doesn’t reveal valid IDs; `LOGIN_BLOCKED` audit | `login.php` |
 | CSRF | Per-session 32-byte token; `csrf_field()` on every POST; `csrf_check()` aborts with **419** + `CSRF_FAILURE` audit; logout is POST-only with CSRF | `includes/bootstrap.php`, `logout.php`, all POST forms |
 | XSS | `e()` (`htmlspecialchars`) on all output; Content-Security-Policy (`default-src 'self'`, `img self data:`, `style self 'unsafe-inline'`, `script self`, `form-action self`, `frame-ancestors 'none'`); no external scripts | `includes/bootstrap.php`, all templates |

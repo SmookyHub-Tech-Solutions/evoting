@@ -3,6 +3,9 @@
  // custom colors, fonts, shadows, and animations are available.
  // Non-technical summary: it keeps every page looking consistent.
  module.exports = {
+  // Dark mode: flipped by adding/removing the "dark" class on <html> (theme button in app.js).
+  // "class" (not "media") lets the visitor's saved choice beat the device setting.
+  darkMode: 'class',
    // Content paths: files Tailwind scans to know which styles are used.
    // If a page is not listed here, its styles may be missing.
   content: ['./*.php', './admin/**/*.php', './student/**/*.php', './includes/**/*.php', './assets/js/**/*.js'],

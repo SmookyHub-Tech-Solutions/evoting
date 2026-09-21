@@ -61,3 +61,79 @@
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ---------------------------------------------------------------------------
+ * Dark mode — plain-language guide.
+ * When the moon/sun button is used, app.js puts a "dark" class on <html> and
+ * these rules repaint the light surfaces darker. Non-technical summary: same
+ * pages, nighttime colors. Pastel notice boxes (green/red/amber/blue alerts,
+ * badges, icon chips) are deliberately left light so their dark text stays
+ * readable; only neutral slate/white surfaces and text are remapped.
+ * Technical note: plain (unlayered) CSS placed last so it beats the layered
+ * Tailwind utilities; ".dark X" outranks "X" by specificity.
+ * ------------------------------------------------------------------------- */
+.dark { color-scheme: dark; } /* Dark scrollbars and form controls. */
+.dark body { background-color: #020617; color: #e2e8f0; } /* Page background. */
+.dark body.bg-slate-50 { background-color: #020617; } /* Landing page body. */
+
+/* Content boxes and inputs. */
+.dark .card { background-color: #0f172a; border-color: #1e293b; }
+.dark .input { background-color: #1e293b; border-color: #334155; color: #f1f5f9; }
+.dark .input::placeholder { color: #64748b; }
+.dark .label { color: #cbd5e1; }
+.dark .hint { color: #94a3b8; }
+.dark .btn-outline { background-color: #0f172a; border-color: #334155; color: #e2e8f0; }
+.dark .btn-outline:hover { background-color: #1e293b; border-color: #475569; }
+.dark .th { color: #94a3b8; }
+.dark .td { color: #cbd5e1; }
+.dark thead { background-color: rgba(30, 41, 59, .6); } /* Table header rows. */
+.dark .page-eyebrow { color: #93c5fd; }
+
+/* Text colors: dark slate text becomes light so it reads on dark cards. */
+.dark .text-slate-900 { color: #f1f5f9; }
+.dark .text-slate-800 { color: #e2e8f0; }
+.dark .text-slate-700 { color: #cbd5e1; }
+.dark .text-slate-600 { color: #94a3b8; }
+.dark .text-slate-500 { color: #94a3b8; }
+.dark .text-navy { color: #dbeafe; }
+.dark .text-blue-700 { color: #93c5fd; }
+
+/* Solid white surfaces become dark cards (header/footer handled below). */
+.dark .bg-white { background-color: #0f172a; }
+/* Sidebar exception: the highlighted menu pill must stay white on the navy menu. */
+.dark aside a.bg-white { background-color: #fff; color: #0f2a43; }
+.dark aside a.bg-white .text-navy { color: #0f2a43; }
+.dark aside a.bg-white .text-slate-500 { color: #64748b; }
+/* Translucent header/footer bars. */
+.dark .bg-white\/85 { background-color: rgba(2, 6, 23, .85); }
+.dark .bg-white\/60 { background-color: rgba(2, 6, 23, .6); }
+/* Light grey panels become dark (page sections, inset boxes, footer bars). */
+.dark .bg-slate-50 { background-color: #020617; }
+.dark section.bg-grid-slate { background-color: #020617; } /* Sign-in side panel. */
+.dark .bg-slate-50\/60 { background-color: rgba(2, 6, 23, .6); }
+.dark .bg-slate-100 { background-color: #1e293b; }
+.dark .bg-slate-200\/70 { background-color: #1e293b; } /* Progress-bar tracks. */
+
+/* Borders and row dividers. */
+.dark .border-slate-100 { border-color: #1e293b; }
+.dark .border-slate-200 { border-color: #334155; }
+.dark .border-slate-200\/80 { border-color: #1e293b; }
+.dark .border-slate-200\/70 { border-color: #1e293b; }
+.dark .border-slate-200\/60 { border-color: #1e293b; }
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #1e293b; }
+.dark .ring-slate-100 { --tw-ring-color: #334155; }
+.dark .ring-slate-200\/50 { --tw-ring-color: #334155; }
+.dark .ring-slate-200\/60 { --tw-ring-color: #334155; }
+.dark .ring-slate-200\/70 { --tw-ring-color: #334155; }
+
+/* Hover states on rows, links, and menu buttons. */
+.dark .hover\:bg-slate-50:hover { background-color: #1e293b; }
+.dark .hover\:bg-slate-50\/80:hover { background-color: #1e293b; }
+.dark .hover\:bg-slate-100:hover { background-color: #1e293b; }
+.dark .hover\:border-slate-300:hover { border-color: #475569; }
+.dark .hover\:text-blue-700:hover { color: #93c5fd; }
+.dark .group:hover .group-hover\:text-blue-700 { color: #93c5fd; }
+
+/* Selected vote cards: keep the blue "chosen" tint visible at night. */
+.dark .peer:checked ~ .peer-checked\:bg-blue-50\/70 { background-color: rgba(30, 58, 138, .45); }
+.dark .peer:checked ~ .peer-checked\:bg-slate-100 { background-color: #1e293b; }

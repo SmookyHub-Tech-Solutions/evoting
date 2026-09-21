@@ -316,13 +316,14 @@ function render_error(int $code, string $title, string $msg)
 // --- Password helpers ---
 /**
  * Check a password meets the strength rule.
- * Plain English: must be 8+ characters with both letters and numbers.
+ * Plain English: must be 8+ characters with an uppercase letter, a lowercase
+ * letter and a number — the same 4 ticks shown live on the change-password form.
  * Technical note: strlen + regex checks; returns error text or null if OK.
  */
 function password_error(string $p): ?string
 {
     if (strlen($p) < 8) return 'Password must be at least 8 characters.';
-    if (!preg_match('/[A-Za-z]/', $p) || !preg_match('/\d/', $p)) return 'Password must contain letters and numbers.';
+    if (!preg_match('/[A-Z]/', $p) || !preg_match('/[a-z]/', $p) || !preg_match('/\d/', $p)) return 'Password must include an uppercase letter, a lowercase letter and a number.';
     return null;
 }
 
