@@ -1,9 +1,29 @@
 <?php
+/**
+ * Results helpers — plain-English overview:
+ * This file counts votes and draws the results screen (bars, winners, turnout).
+ * Non-technical meaning: it is the scoreboard — it adds up anonymous votes
+ * per candidate, works out who is leading, and shows how many students voted.
+ * Technical note: reads from ballots (turnout) + votes (tallies) joined via
+ * candidates; never links a vote back to a voter.
+ */
+
+// --- Counting ---
+/**
+ * Count all votes for one election, grouped by position.
+ * Plain English: for each role, lists every candidate with their vote total,
+ * plus who has the most votes and how many ballots skipped that role.
+ * Technical note: per-candidate COUNT(*) subquery on votes; abstain =
+ * ballots - sum(candidate votes); leaders = count tied at max.
+ */
 function election_results(int $eid): array
 {
+    // Plain explanation: how many people voted in total (for turnout math).
     $ballots = (int) db_val('SELECT COUNT(*) FROM ballots WHERE election_id = ?', [$eid]);
     $out = [];
+    // Plain explanation: work through each role (President, etc.) in order.
     foreach (db_all('SELECT * FROM positions WHERE election_id = ? ORDER BY id', [$eid]) as $p) {
+        // Plain explanation: fetch candidates with their vote counts, best first.
         $cands = db_all(
             "SELECT c.id, c.name, c.department, c.photo,
                     (SELECT COUNT(*) FROM votes v WHERE v.candidate_id = c.id) AS votes
@@ -11,6 +31,7 @@ function election_results(int $eid): array
              ORDER BY votes DESC, c.name",
             [$p['id']]
         );
+        // Plain explanation: totals used for bars, winners, and skip counts.
         $sum = array_sum(array_map('intval', array_column($cands, 'votes')));
         $max = $cands ? (int) $cands[0]['votes'] : 0;
         $leaders = $max > 0 ? count(array_filter($cands, fn($c) => (int) $c['votes'] === $max)) : 0;
@@ -19,19 +40,36 @@ function election_results(int $eid): array
     return ['ballots' => $ballots, 'positions' => $out];
 }
 
+/**
+ * List elections whose results a student is allowed to see.
+ * Plain English: decides which past (or live) elections show up on the
+ * student's results page based on the admin's visibility setting.
+ * Technical note: reads settings.results_visibility ('always' vs 'after_close').
+ */
 function student_result_elections(): array
 {
+    // Plain explanation: admins choose "always show" vs "only after closing".
     $where = setting('results_visibility', 'after_close') === 'always' ? "status IN ('OPEN','CLOSED')" : "status = 'CLOSED'";
     return db_all("SELECT * FROM elections WHERE $where ORDER BY end_time DESC");
 }
 
+// --- Display ---
+/**
+ * Print the results cards (HTML) for one election.
+ * Plain English: draws the headline scoreboard (ballots, turnout bar) plus
+ * one card per role with bars, percentages, winner/tied badges, and skips.
+ * Technical note: echoes HTML directly; uses avatar(), status_badge(), e();
+ * turnout = ballots / active students.
+ */
 function render_results(array $el): void
 {
+    // Plain explanation: gather counts + work out turnout percentage.
     $r = election_results((int) $el['id']);
     $final = $el['status'] === 'CLOSED';
     $eligible = (int) db_val("SELECT COUNT(*) FROM users WHERE role='student' AND status='active'");
     $turnout = $eligible ? round($r['ballots'] / $eligible * 100, 1) : 0;
     ?>
+<!-- Results header: election title, status, ballot + turnout boxes, progress bar -->
 <div class="card animate-fade-up mb-6 overflow-hidden">
   <div class="h-1.5 bg-gradient-to-r <?= $final ? 'from-emerald-500 via-teal-600 to-navy' : 'from-amber-400 via-amber-500 to-orange-500' ?>"></div>
   <div class="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
@@ -53,8 +91,10 @@ function render_results(array $el): void
   </div>
 </div>
 <?php if (!$r['positions']): ?>
+  <!-- Empty message: shown when the election has no roles yet -->
   <div class="empty-state text-sm text-slate-500">This election has no positions yet.</div>
 <?php endif; ?>
+<!-- Per-role results grid: one card per position with candidate bars -->
 <div class="grid items-start gap-5 lg:grid-cols-2">
 <?php foreach ($r['positions'] as $blk): ?>
   <section class="card animate-fade-up p-5 sm:p-6">
@@ -64,10 +104,12 @@ function render_results(array $el): void
     </div>
     <div class="space-y-5">
     <?php foreach ($blk['candidates'] as $c):
+        // Plain explanation: per-candidate maths — votes, share, and leader flag.
         $v = (int) $c['votes'];
         $pct = $r['ballots'] ? $v / $r['ballots'] * 100 : 0;
         $lead = $blk['max'] > 0 && $v === $blk['max'];
         ?>
+      <!-- One candidate row: photo, name, badge, vote count, and bar -->
       <div>
         <div class="mb-1.5 flex items-center justify-between gap-2 text-sm">
           <span class="flex min-w-0 items-center gap-2.5">
@@ -87,6 +129,7 @@ function render_results(array $el): void
       </div>
     <?php endforeach; ?>
     </div>
+    <!-- Skip count: how many ballots left this role blank -->
     <p class="mt-5 border-t border-slate-100 pt-3.5 text-xs text-slate-500">Abstained / no selection: <span class="font-semibold text-slate-700"><?= (int) $blk['abstain'] ?></span></p>
   </section>
 <?php endforeach; ?>

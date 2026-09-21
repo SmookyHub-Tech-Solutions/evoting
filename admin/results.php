@@ -1,13 +1,24 @@
 <?php
+/**
+ * Admin Results page — view tallies and export them.
+ * Shows vote counts per candidate for the chosen election, plus turnout.
+ * Counts are provisional while voting is open. The Export CSV button
+ * downloads the same numbers as a spreadsheet file.
+ */
+// Load shared page tools (login checks, database helpers, page layout).
 require __DIR__ . '/../includes/layout.php';
+// Only signed-in admins may view full results.
 $u = require_login('admin');
 
+// Work out which election is selected (defaults to the newest).
 $elections = db_all('SELECT * FROM elections ORDER BY id DESC');
 $id = (int) ($_GET['election'] ?? ($elections[0]['id'] ?? 0));
 $el = $id ? db_one('SELECT * FROM elections WHERE id = ?', [$id]) : null;
 
+// CSV download: build the spreadsheet and send it as a file, then stop here.
 if ($el && get_str('export') === 'csv') {
     $r = election_results($id);
+    // Record in the security log that someone downloaded the results.
     audit('RESULTS_EXPORTED', $el['title']);
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="results-election-' . $id . '.csv"');
@@ -21,10 +32,13 @@ if ($el && get_str('export') === 'csv') {
     exit;
 }
 
+// Draw the page frame (header, menu).
 layout_start('Results', 'results');
 if (!$elections): ?>
+  <!-- Empty state: no election exists yet, so there is nothing to count. -->
   <div class="card p-8 text-center text-sm text-slate-600">No elections yet.</div>
 <?php else: ?>
+  <!-- Top bar: election picker plus Export (CSV download) and Print buttons. -->
   <div class="mb-6 flex flex-wrap items-end justify-between gap-4 print:hidden">
     <form method="get" class="w-full max-w-sm">
       <label class="label" for="election">Election</label>
@@ -38,8 +52,10 @@ if (!$elections): ?>
     </div>
   </div>
   <?php if ($el && $el['status'] === 'OPEN'): ?>
+    <!-- Warning shown while voting is open: numbers below may still change. -->
     <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 print:hidden">Voting is still open. These counts are provisional and hidden from students unless you allow live results in Settings.</div>
   <?php endif; ?>
-  <?php if ($el) render_results($el);
+  <?php // Render the tally tables (one per position) using the shared results helper.
+  if ($el) render_results($el);
 endif;
 layout_end();

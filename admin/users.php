@@ -1,43 +1,60 @@
 <?php
+/**
+ * Admin Accounts page — manage fellow administrators.
+ * Create admin logins, disable or re-enable them, reset a colleague's
+ * password, and change your own password. You can never disable your own
+ * account, so the system always keeps at least one active admin.
+ */
+// Load shared page tools (login checks, database helpers, page layout).
 require __DIR__ . '/../includes/layout.php';
+// Only signed-in admins may manage other admins.
 $u = require_login('admin');
 
+// Handle the Add / Disable / Reset-password / Change-password buttons.
 if (is_post()) {
+    // Safety check: confirm the form really came from our site (blocks forged requests).
     csrf_check();
     $a = post('action');
     $id = (int) post('id');
     try {
+        // "Add" creates a brand-new admin account after basic checks.
         if ($a === 'add') {
             $sid = post('student_id');
             $name = post('name');
             $email = post('email');
             $pw = (string) ($_POST['password'] ?? '');
+            // Checks: valid username format, name present, valid email, strong enough password, ID not taken.
             if (!preg_match('~^[A-Za-z0-9/_.\-]{3,30}$~', $sid)) throw new RuntimeException('Username must be 3–30 characters: letters, numbers and / _ . - only.');
             if ($name === '' || strlen($name) > 100) throw new RuntimeException('Name is required (100 characters max).');
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Enter a valid email address or leave it blank.');
             if ($err = password_error($pw)) throw new RuntimeException($err);
             if (db_val('SELECT 1 FROM users WHERE student_id = ?', [$sid])) throw new RuntimeException('That ID is already in use.');
+            // Save the new admin; the password is stored scrambled (hashed), never as plain text.
             db_run("INSERT INTO users(student_id,name,email,department,password,role,status,created_at) VALUES (?,?,?,?,?, 'admin', 'active', ?)",
                 [$sid, $name, $email, 'Electoral Commission', password_hash($pw, PASSWORD_DEFAULT), date('Y-m-d H:i:s')]);
+            // audit() writes a line in the security log: who did what and when.
             audit('ADMIN_CREATED', $sid);
             flash('success', 'Admin account created.');
         } else {
+            // Other buttons act on one existing admin: look that account up first.
             $t = db_one("SELECT * FROM users WHERE id = ? AND role = 'admin'", [$id]);
             if (!$t) throw new RuntimeException('Account not found.');
             if ($a === 'toggle') {
+                // Disable/Enable a colleague; your own account is protected so you cannot lock yourself out.
                 if ($id === (int) $u['id']) throw new RuntimeException('You cannot disable your own account.');
                 $new = $t['status'] === 'active' ? 'inactive' : 'active';
                 db_run('UPDATE users SET status = ? WHERE id = ?', [$new, $id]);
                 audit($new === 'active' ? 'ADMIN_ENABLED' : 'ADMIN_DISABLED', $t['student_id']);
                 flash('success', 'Account ' . ($new === 'active' ? 'enabled.' : 'disabled.'));
             } elseif ($a === 'reset') {
+                // Reset a colleague's password and clear lockouts from failed logins.
                 $pw = random_password(12);
                 db_run('UPDATE users SET password = ? WHERE id = ?', [password_hash($pw, PASSWORD_DEFAULT), $id]);
                 db_run('DELETE FROM login_attempts WHERE identifier = ?', [strtolower($t['student_id'])]);
                 audit('ADMIN_PASSWORD_RESET', $t['student_id']);
                 flash('success', "New password for {$t['student_id']}: $pw — copy it now, it will not be shown again.");
             } elseif ($a === 'password') {
-                // Change own password
+                // Change own password: prove you know the current one, then set a strong new one.
                 $cur = (string) ($_POST['current'] ?? '');
                 $new = (string) ($_POST['new'] ?? '');
                 if ($id !== (int) $u['id']) throw new RuntimeException('You can only change your own password here.');
@@ -45,20 +62,25 @@ if (is_post()) {
                 if (!password_verify($cur, $row['password'])) { audit('PASSWORD_CHANGE_FAILED'); throw new RuntimeException('Your current password is incorrect.'); }
                 if ($err = password_error($new)) throw new RuntimeException($err);
                 db_run('UPDATE users SET password = ? WHERE id = ?', [password_hash($new, PASSWORD_DEFAULT), $id]);
+                // Refresh the login ticket so the old session cannot be reused (session fixation protection).
                 session_regenerate_id(true);
                 audit('PASSWORD_CHANGED');
                 flash('success', 'Your password was updated.');
             }
         }
     } catch (RuntimeException $ex) {
+        // If any check failed, show its message instead of saving anything.
         flash('error', $ex->getMessage());
     }
+    // Go back to the list so refreshing does not re-submit the form.
     redirect('admin/users.php');
 }
 
+// Load all admin accounts for the table, then draw the page frame.
 $rows = db_all("SELECT * FROM users WHERE role = 'admin' ORDER BY id");
 layout_start('Admin accounts', 'users');
 ?>
+<!-- Main content: admin list on the left, create-account and change-password forms on the right. -->
 <div class="grid gap-6 lg:grid-cols-3">
   <div class="card overflow-x-auto lg:col-span-2">
     <table class="min-w-full divide-y divide-slate-100">
@@ -85,6 +107,7 @@ layout_start('Admin accounts', 'users');
   </div>
 
   <div class="space-y-6">
+    <!-- Form 1: create a new admin login. -->
     <section class="card p-5">
       <h2 class="mb-4 font-semibold text-slate-900">Add admin account</h2>
       <form method="post" class="space-y-4">
@@ -96,6 +119,7 @@ layout_start('Admin accounts', 'users');
         <button class="btn btn-primary" type="submit">Create account</button>
       </form>
     </section>
+    <!-- Form 2: change your own password (needs your current password first). -->
     <section class="card p-5">
       <h2 class="mb-4 font-semibold text-slate-900">Change your password</h2>
       <form method="post" class="space-y-4">

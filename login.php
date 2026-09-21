@@ -1,47 +1,82 @@
 <?php
+/**
+ * Sign-in page (login.php) — plain-language guide.
+ *
+ * What this page is: the door where students and staff enter
+ * with their User ID and password.
+ *
+ * How it works, step by step:
+ * 1. If someone is already signed in, send them to their dashboard.
+ * 2. Clean up old login-attempt records (older than one day).
+ * 3. When the form is submitted, check the security token, then
+ *    apply rate limits (locks out repeated guessing), verify the
+ *    password, start a fresh session, and record the result.
+ * 4. Show the split-screen design: explanation on the left,
+ *    sign-in form on the right.
+ */
+
+// Load shared setup: database, sessions, and security helpers.
 require __DIR__ . '/includes/bootstrap.php';
 
+// Auth check: already signed in means no need to see this page again.
 if ($cu = current_user()) {
     redirect(home_for($cu));
 }
+// Housekeeping: delete login-attempt notes older than 24 hours.
 db_run('DELETE FROM login_attempts WHERE created_at < ?', [time() - 86400]);
 
+// These hold the error message and the typed User ID (so it can be re-shown).
 $error = '';
 $sid = '';
+// Form submitted: this block checks the login details.
 if (is_post()) {
+    // Security token check: proves the form came from our own site.
     csrf_check();
+    // Read what the visitor typed (User ID and password).
     $sid = post('student_id');
     $pw = (string) ($_POST['password'] ?? '');
     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
     $since = time() - 900;
     $key = strtolower($sid);
+    // Rate-limit counts: how many recent failures for this ID and this network address.
     $failsId = (int) db_val('SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND created_at > ?', [$key, $since]);
     $failsIp = (int) db_val('SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND created_at > ?', [$ip, $since]);
 
+    // Rate-limit block: too many guesses means a 15-minute pause.
     if ($failsId >= 5 || $failsIp >= 20) {
         audit('LOGIN_BLOCKED', 'Rate limit reached', $sid !== '' ? $sid : 'UNKNOWN');
         $error = 'Too many failed attempts. Please wait 15 minutes and try again.';
     } else {
+        // Look up the account matching the typed User ID.
         $user = db_one('SELECT * FROM users WHERE student_id = ?', [$sid]);
-        // Always run a hash check so response time does not reveal valid IDs.
+        // Always run a password check, even if no account exists,
+        // so outsiders cannot guess valid IDs from response speed.
         $ok = password_verify($pw, $user['password'] ?? password_hash('placeholder', PASSWORD_DEFAULT));
+        // Success path: correct password plus an active account signs the user in.
         if ($user && $ok && $user['status'] === 'active') {
+            // Give the session a fresh ID (protects against session fixation).
             session_regenerate_id(true);
+            // Remember who is signed in and when they last acted.
             $_SESSION['uid'] = (int) $user['id'];
             $_SESSION['sid'] = $user['student_id'];
             $_SESSION['last'] = time();
+            // Clear past failed-attempt notes for this ID after a good login.
             db_run('DELETE FROM login_attempts WHERE identifier = ?', [$key]);
+            // Upgrade the stored password format if it uses an older style.
             if (password_needs_rehash($user['password'], PASSWORD_DEFAULT)) {
                 db_run('UPDATE users SET password = ? WHERE id = ?', [password_hash($pw, PASSWORD_DEFAULT), $user['id']]);
             }
             audit('LOGIN_SUCCESS');
             redirect(home_for($user));
         }
+        // Failure path: record the attempt and show a generic message
+        // (generic wording avoids revealing which IDs exist).
         db_run('INSERT INTO login_attempts(identifier,ip,created_at) VALUES (?,?,?)', [$key, $ip, time()]);
         audit('LOGIN_FAILED', $user && $user['status'] !== 'active' ? 'Inactive account' : '', $sid !== '' ? $sid : 'UNKNOWN');
         $error = 'Invalid User ID or password.';
     }
 }
+// Load the school name and any one-time notice messages for display.
 $inst = setting('institution_name', 'University E-Voting');
 $flashes = take_flash();
 ?><!DOCTYPE html>
@@ -57,6 +92,7 @@ $flashes = take_flash();
 </head>
 <body class="min-h-full bg-slate-100 font-sans text-slate-800 antialiased">
 <div class="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
+  <!-- Left panel (large screens): friendly explanation of safe voting. -->
   <section class="relative hidden flex-col justify-between overflow-hidden bg-navy p-10 text-white lg:flex xl:p-14">
     <div class="bg-dots-white pointer-events-none absolute inset-0 opacity-30"></div>
     <div class="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-teal-500/20 blur-3xl"></div>
@@ -77,6 +113,7 @@ $flashes = take_flash();
     <p class="relative text-[13px] text-slate-400">Your vote is stored without your name. Only the fact that you voted is recorded.</p>
   </section>
 
+  <!-- Right panel: the actual sign-in card and form. -->
   <section class="flex items-center justify-center bg-slate-50 bg-grid-slate p-6 sm:p-10">
     <div class="w-full max-w-md animate-fade-up">
       <p class="mb-6 flex items-center gap-2 text-[15px] font-bold text-navy lg:hidden">
@@ -84,22 +121,27 @@ $flashes = take_flash();
         <?= e($inst) ?>
       </p>
       <div class="card p-7 shadow-soft sm:p-8">
+        <!-- Card heading: welcomes the visitor. -->
         <h2 class="text-2xl font-extrabold tracking-tight text-navy">Welcome back</h2>
         <p class="mt-1.5 text-sm text-slate-500">Use your User ID and password to continue.</p>
 
         <?php foreach ($flashes as $f): ?>
+          <!-- One-time notice, e.g. "You have been signed out." -->
           <div class="alert mt-5 border-blue-200/80 bg-blue-50/90 text-blue-900" role="status"><?= e($f['m']) ?></div>
         <?php endforeach; ?>
         <?php if ($error): ?>
+          <!-- Error box: shown when sign-in fails or is temporarily blocked. -->
           <div class="alert mt-5 border-red-200/80 bg-red-50/90 text-red-900" role="alert">
             <svg class="mt-0.5 h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
             <span><?= e($error) ?></span>
           </div>
         <?php endif; ?>
 
+        <!-- Sign-in form: User ID + password + submit button. -->
         <form method="post" class="mt-6 space-y-4" autocomplete="off">
           <?= csrf_field() ?>
           <div>
+            <!-- User ID field: keeps the typed value if the page reloads with an error. -->
             <label class="label" for="student_id">User ID</label>
             <div class="relative">
               <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"><svg class="h-4.5 w-4.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg></span>
@@ -107,6 +149,7 @@ $flashes = take_flash();
             </div>
           </div>
           <div>
+            <!-- Password field with a Show/Hide button for readability. -->
             <label class="label" for="password">Password</label>
             <div class="relative">
               <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path d="M6 11h12v9H6zM8 11V8a4 4 0 118 0v3"/></svg></span>

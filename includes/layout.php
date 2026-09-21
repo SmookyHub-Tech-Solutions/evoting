@@ -1,8 +1,24 @@
 <?php
+/**
+ * Page layout helpers — plain-English overview:
+ * This file draws the shared look of every page: the side menu, top bar,
+ * pop-up messages, icons, and footer. Other pages just call layout_start()
+ * at the top and layout_end() at the bottom.
+ * Non-technical meaning: it is the frame around the content — like the
+ * header, menu, and footer of a letter.
+ * Technical note: loads bootstrap.php + voting.php + results.php; outputs
+ * HTML with Tailwind classes; pulls current_user(), setting(), take_flash().
+ */
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/voting.php';
 require_once __DIR__ . '/results.php';
 
+// --- Icons ---
+/**
+ * Return a small line-icon picture (SVG) by name.
+ * Plain English: picks a ready-made symbol (home, chart, lock, etc.) for menus and buttons.
+ * Technical note: static $p map of SVG paths; $c sets size classes; unknown names render empty.
+ */
 function icon(string $n, string $c = 'h-5 w-5'): string
 {
     static $p = [
@@ -28,8 +44,15 @@ function icon(string $n, string $c = 'h-5 w-5'): string
     return '<svg class="' . $c . '" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' . ($p[$n] ?? '') . '"/></svg>';
 }
 
+// --- Navigation ---
+/**
+ * Build the side-menu links for a given role.
+ * Plain English: admins see election-management links; students see voting links.
+ * Technical note: returns [url, label, icon, key, hint] rows; $key matches $active in layout_start().
+ */
 function nav_items(string $role): array
 {
+    // Plain explanation: full management menu for election officers.
     if ($role === 'admin') {
         return [
             ['admin/dashboard.php', 'Dashboard', 'home', 'dashboard', 'Overview and turnout'],
@@ -43,6 +66,7 @@ function nav_items(string $role): array
             ['admin/settings.php', 'Settings', 'cog', 'settings', 'Institution setup'],
         ];
     }
+    // Plain explanation: simpler menu for students who vote and view results.
     return [
         ['student/dashboard.php', 'Dashboard', 'home', 'dashboard', 'Your voting home'],
         ['student/election.php', 'Elections', 'vote', 'elections', 'Browse and vote'],
@@ -51,11 +75,18 @@ function nav_items(string $role): array
     ];
 }
 
+/**
+ * Show a round photo or letter initials for a person.
+ * Plain English: displays their uploaded picture, or their initials in a coloured circle if none.
+ * Technical note: $size sets Tailwind size classes; photo names are escaped via url()/e().
+ */
 function avatar(string $name, ?string $photo, string $size = 'h-12 w-12'): string
 {
+    // Plain explanation: use the uploaded photo when one exists.
     if ($photo) {
         return '<img src="' . e(url('uploads/' . $photo)) . '" alt="" loading="lazy" class="' . $size . ' shrink-0 rounded-2xl object-cover ring-1 ring-slate-900/10 shadow-sm">';
     }
+    // Plain explanation: otherwise build up to two initials from the name.
     $ini = '';
     foreach (array_slice(preg_split('/\s+/', trim($name)), 0, 2) as $w) {
         $ini .= strtoupper(substr($w, 0, 1));
@@ -63,12 +94,21 @@ function avatar(string $name, ?string $photo, string $size = 'h-12 w-12'): strin
     return '<span class="' . $size . ' inline-flex shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-navy to-navy-light text-sm font-bold text-white shadow-sm ring-1 ring-navy-dark/20">' . e($ini ?: '•') . '</span>';
 }
 
+/**
+ * Print the top of the page: header, side menu, and pop-up messages.
+ * Plain English: draws everything you see before the main content — logo,
+ * menu, user name, and any success/error notices.
+ * Technical note: echoes HTML directly; $active highlights the current menu
+ * item; flashes come from take_flash() and are tone-mapped to colours.
+ */
 function layout_start(string $title, string $active = '', string $subtitle = ''): void
 {
+    // Plain explanation: gather who is logged in, school name, menu, and notices.
     $u = current_user();
     $inst = setting('institution_name', 'University E-Voting');
     $items = $u ? nav_items($u['role']) : [];
     $flashes = take_flash();
+    // Plain explanation: colour styles for success/error/warning/info notices.
     $tone = [
         'success' => 'border-emerald-200/80 bg-emerald-50/90 text-emerald-900',
         'error' => 'border-red-200/80 bg-red-50/90 text-red-900',
@@ -77,6 +117,7 @@ function layout_start(string $title, string $active = '', string $subtitle = '')
     ];
     $toneIcon = ['success' => 'check', 'error' => 'alert', 'warning' => 'clock', 'info' => 'info'];
     ?><!DOCTYPE html>
+<!-- Page head: browser tab title, icon, styles, and app script -->
 <html lang="en" class="h-full">
 <head>
 <meta charset="utf-8">
@@ -90,6 +131,7 @@ function layout_start(string $title, string $active = '', string $subtitle = '')
 <body class="h-full font-sans text-slate-800 antialiased">
 <div class="min-h-full lg:flex">
   <div id="overlay" class="fixed inset-0 z-30 hidden bg-navy-dark/60 backdrop-blur-sm lg:hidden"></div>
+  <!-- Sidebar: school logo, main menu links, and user card with log-out -->
   <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 flex w-[17rem] -translate-x-full flex-col bg-navy text-slate-300 shadow-2xl transition-transform duration-200 print:hidden lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shrink-0">
     <div class="relative overflow-hidden border-b border-white/10 px-5 pb-5 pt-6">
       <div class="bg-dots-white pointer-events-none absolute inset-0 opacity-40"></div>
@@ -103,6 +145,7 @@ function layout_start(string $title, string $active = '', string $subtitle = '')
         </div>
       </div>
     </div>
+    <!-- Main menu: one link per row, current page highlighted -->
     <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Primary">
       <?php foreach ($items as [$href, $label, $ic, $key, $desc]): $on = $active === $key; ?>
         <a href="<?= e(url($href)) ?>" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all <?= $on ? 'bg-white font-semibold text-navy shadow-md' : 'font-medium text-slate-300 hover:bg-white/[.07] hover:text-white' ?>" <?= $on ? 'aria-current="page"' : '' ?>>
@@ -113,6 +156,7 @@ function layout_start(string $title, string $active = '', string $subtitle = '')
       <?php endforeach; ?>
     </nav>
     <?php if ($u): ?>
+    <!-- Logged-in user card + log-out button at bottom of sidebar -->
     <div class="border-t border-white/10 p-3">
       <div class="mb-2 flex items-center gap-3 rounded-xl bg-white/[.06] px-3 py-2.5 ring-1 ring-white/10">
         <?= avatar($u['name'], null, 'h-9 w-9 !rounded-full') ?>
@@ -130,6 +174,7 @@ function layout_start(string $title, string $active = '', string $subtitle = '')
   </aside>
 
   <div class="flex min-w-0 flex-1 flex-col">
+    <!-- Top bar: menu button (mobile), page title, and user info -->
     <header class="sticky top-0 z-20 border-b border-slate-200/80 bg-white/85 px-4 py-3 shadow-[0_1px_12px_-6px_rgb(15_42_67/.15)] backdrop-blur-md print:hidden sm:px-6 lg:px-8">
       <div class="mx-auto flex w-full max-w-6xl items-center gap-3">
         <button id="menuBtn" type="button" class="rounded-xl p-2 text-slate-600 ring-1 ring-transparent transition hover:bg-slate-100 hover:ring-slate-200 lg:hidden" aria-label="Open menu"><?= icon('menu', 'h-6 w-6') ?></button>
@@ -148,6 +193,7 @@ function layout_start(string $title, string $active = '', string $subtitle = '')
         <?php endif; ?>
       </div>
     </header>
+    <!-- Main content area: pop-up notices first, then the page's own content -->
     <main class="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">
       <?php foreach ($flashes as $f): $t = $tone[$f['t']] ?? $tone['info']; $ic = $toneIcon[$f['t']] ?? 'info'; ?>
         <div class="alert <?= e($t) ?> animate-fade-up mb-4" role="status"><span class="mt-0.5 shrink-0 opacity-80"><?= icon($ic, 'h-5 w-5') ?></span><span><?= e($f['m']) ?></span></div>
@@ -155,10 +201,17 @@ function layout_start(string $title, string $active = '', string $subtitle = '')
 <?php
 }
 
+/**
+ * Print the bottom of the page: footer and closing tags.
+ * Plain English: draws the small print at the bottom and closes the page.
+ * Technical note: echoes footer HTML; shows institution name via setting();
+ * must be called after layout_start() on every app page.
+ */
 function layout_end(): void
 {
     ?>
     </main>
+    <!-- Footer: school name + security reassurance note -->
     <footer class="border-t border-slate-200/80 bg-white/60 px-6 py-5 print:hidden">
       <div class="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-2 text-xs text-slate-500 sm:flex-row">
         <p><span class="font-semibold text-slate-700"><?= e(setting('institution_name', 'University E-Voting')) ?></span> · Secure student elections</p>

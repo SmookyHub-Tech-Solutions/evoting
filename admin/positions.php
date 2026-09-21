@@ -1,23 +1,38 @@
 <?php
+/**
+ * Admin Positions page — define what students vote for.
+ * Each election has positions (e.g. "President"). Positions can only be
+ * added or removed while the election is still a draft/upcoming and has
+ * no votes; once voting starts they are locked to protect the ballot.
+ */
+// Load shared page tools (login checks, database helpers, page layout).
 require __DIR__ . '/../includes/layout.php';
+// Only signed-in admins may manage positions.
 $u = require_login('admin');
 
+// Load all elections for the dropdown, and work out which one is selected.
 $elections = db_all('SELECT id,title,status FROM elections ORDER BY id DESC');
 $eid = (int) ($_GET['election'] ?? $_POST['election_id'] ?? ($elections[0]['id'] ?? 0));
 
+// Handle the Add / Delete buttons (form submissions only).
 if (is_post()) {
+    // Safety check: confirm the form really came from our site (blocks forged requests).
     csrf_check();
     $a = post('action');
     try {
+        // Guard: the election must exist, and must not be locked (open or already voted in).
+        // election_locked() simply returns true once voting has started or votes exist.
         if (!db_val('SELECT 1 FROM elections WHERE id = ?', [$eid])) throw new RuntimeException('Choose an election first.');
         if (election_locked($eid)) throw new RuntimeException('Positions cannot be changed once an election is open or has votes.');
         if ($a === 'add') {
+            // Add: check the name is present and fits, then save it.
             $name = post('name');
             if ($name === '' || strlen($name) > 100) throw new RuntimeException('Position name is required (100 characters max).');
             db_run('INSERT INTO positions(election_id,name,description) VALUES (?,?,?)', [$eid, $name, substr(post('description'), 0, 300)]);
             audit('POSITION_CREATED', $name);
             flash('success', 'Position added.');
         } elseif ($a === 'delete') {
+            // Delete: find the position in this election, remove candidate photos, then delete.
             $p = db_one('SELECT * FROM positions WHERE id = ? AND election_id = ?', [(int) post('id'), $eid]);
             if (!$p) throw new RuntimeException('Position not found.');
             foreach (db_all('SELECT photo FROM candidates WHERE position_id = ?', [$p['id']]) as $c) delete_photo($c['photo']);
@@ -26,18 +41,24 @@ if (is_post()) {
             flash('success', 'Position deleted.');
         }
     } catch (RuntimeException $ex) {
+        // If any check failed, show its message instead of saving anything.
         flash('error', $ex->getMessage());
     }
+    // Return to the same election so refreshing does not re-submit the form.
     redirect('admin/positions.php?election=' . $eid);
 }
 
+// Load data for display: positions with candidate counts, plus whether editing is locked.
 $positions = $eid ? db_all("SELECT p.*, (SELECT COUNT(*) FROM candidates c WHERE c.position_id = p.id) AS n FROM positions p WHERE election_id = ? ORDER BY p.id", [$eid]) : [];
 $locked = $eid ? election_locked($eid) : false;
 
+// Draw the page frame (header, menu).
 layout_start('Positions', 'positions');
 if (!$elections): ?>
+  <!-- Empty state: no election exists yet, so there is nowhere to add positions. -->
   <div class="card p-8 text-center text-sm text-slate-600">Create an election before adding positions. <a class="font-medium text-blue-700 hover:underline" href="<?= e(url('admin/elections.php')) ?>">Go to elections</a></div>
 <?php else: ?>
+  <!-- Election picker: switching it reloads this page for that election. -->
   <form method="get" class="mb-6 max-w-sm">
     <label class="label" for="election">Election</label>
     <select class="input" id="election" name="election" data-autosubmit>
@@ -46,6 +67,7 @@ if (!$elections): ?>
   </form>
   <?php if ($locked): ?><div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">This election is open or has votes, so its positions are locked.</div><?php endif; ?>
 
+  <!-- Main content: position list on the left, add-position form on the right. -->
   <div class="grid gap-6 lg:grid-cols-3">
     <div class="card lg:col-span-2">
       <table class="min-w-full divide-y divide-slate-100">

@@ -1,12 +1,25 @@
 <?php
+/**
+ * Admin Candidates page — manage who stands for each position.
+ * Admins add candidates with a photo, bio and department, edit details,
+ * or remove candidates. Adding/removing is blocked once the election is
+ * open or has votes (locked); basic detail edits stay allowed so typos
+ * can still be fixed. All changes are written to the audit log.
+ */
+// Load shared page tools (login checks, database helpers, page layout).
 require __DIR__ . '/../includes/layout.php';
+// Only signed-in admins may manage candidates.
 $u = require_login('admin');
 
+// Load elections for the dropdown and check whether this election is locked.
 $elections = db_all('SELECT id,title,status FROM elections ORDER BY id DESC');
 $eid = (int) ($_GET['election'] ?? $_POST['election_id'] ?? ($elections[0]['id'] ?? 0));
+// election_locked() is true once voting has started or votes exist: no new/deleted candidates then.
 $locked = $eid ? election_locked($eid) : false;
 
+// Handle the Add / Edit / Delete buttons (form submissions only).
 if (is_post()) {
+    // Safety check: confirm the form really came from our site (blocks forged requests).
     csrf_check();
     $a = post('action');
     $newPhoto = null;
@@ -19,13 +32,17 @@ if (is_post()) {
             $dept = post('department');
             $fac = post('faculty');
             $bio = post('bio');
+            // Basic checks: a name is required and no field may exceed its length limit.
             if ($name === '' || strlen($name) > 100) throw new RuntimeException('Candidate name is required (100 characters max).');
             if (strlen($sid) > 30 || strlen($dept) > 100 || strlen($fac) > 100 || strlen($bio) > 1000) throw new RuntimeException('One of the fields is too long.');
+            // save_photo() checks the uploaded image (type, size) and stores it; null if none uploaded.
             $newPhoto = save_photo($_FILES['photo'] ?? []);
 
             if ($id) {
+                // Editing an existing candidate in this election.
                 $old = db_one('SELECT c.* FROM candidates c JOIN positions p ON p.id = c.position_id WHERE c.id = ? AND p.election_id = ?', [$id, $eid]);
                 if (!$old) throw new RuntimeException('Candidate not found.');
+                // When locked, the active/withdrawn status cannot change, only the details.
                 $status = $locked ? $old['status'] : (post('status') === 'withdrawn' ? 'withdrawn' : 'active');
                 db_run('UPDATE candidates SET name=?, student_id=?, department=?, faculty=?, bio=?, status=?, photo=? WHERE id=?',
                     [$name, $sid, $dept, $fac, $bio, $status, $newPhoto ?? $old['photo'], $id]);
@@ -33,6 +50,7 @@ if (is_post()) {
                 audit('CANDIDATE_UPDATED', $name);
                 flash('success', 'Candidate updated.');
             } else {
+                // Adding a brand-new candidate (blocked entirely once the election is locked).
                 if ($locked) throw new RuntimeException('Candidates cannot be added once an election is open or has votes.');
                 $pid = (int) post('position_id');
                 if (!db_val('SELECT 1 FROM positions WHERE id = ? AND election_id = ?', [$pid, $eid])) throw new RuntimeException('Choose a position for this candidate.');
@@ -43,6 +61,7 @@ if (is_post()) {
                 flash('success', 'Candidate added.');
             }
         } elseif ($a === 'delete') {
+            // Deleting a candidate and its photo file (blocked once the election is locked).
             if ($locked) throw new RuntimeException('Candidates cannot be deleted once an election is open or has votes.');
             $c = db_one('SELECT c.* FROM candidates c JOIN positions p ON p.id = c.position_id WHERE c.id = ? AND p.election_id = ?', [(int) post('id'), $eid]);
             if (!$c) throw new RuntimeException('Candidate not found.');
@@ -52,22 +71,28 @@ if (is_post()) {
             flash('success', 'Candidate deleted.');
         }
     } catch (RuntimeException $ex) {
+        // If anything failed, remove a just-uploaded photo so no orphan file is left behind.
         if ($newPhoto) delete_photo($newPhoto);
         flash('error', $ex->getMessage());
     }
+    // Return to the same election so refreshing does not re-submit the form.
     redirect('admin/candidates.php?election=' . $eid);
 }
 
+// Load data for display: positions in this election, plus the candidate being edited (if any).
 $positions = $eid ? db_all('SELECT * FROM positions WHERE election_id = ? ORDER BY id', [$eid]) : [];
 $edit = null;
 if (isset($_GET['edit']) && $eid) {
     $edit = db_one('SELECT c.* FROM candidates c JOIN positions p ON p.id = c.position_id WHERE c.id = ? AND p.election_id = ?', [(int) $_GET['edit'], $eid]);
 }
 
+// Draw the page frame (header, menu).
 layout_start('Candidates', 'candidates');
 if (!$elections): ?>
+  <!-- Empty state: candidates need an election with positions first. -->
   <div class="card p-8 text-center text-sm text-slate-600">Create an election and its positions before adding candidates.</div>
 <?php else: ?>
+  <!-- Election picker: switching it reloads this page for that election. -->
   <form method="get" class="mb-6 max-w-sm">
     <label class="label" for="election">Election</label>
     <select class="input" id="election" name="election" data-autosubmit>
@@ -77,6 +102,7 @@ if (!$elections): ?>
   <?php if ($locked): ?><div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">This election is open or has votes. You can edit candidate details, but not add, delete or withdraw candidates.</div><?php endif; ?>
 
   <div class="grid gap-6 xl:grid-cols-3">
+    <!-- Left: one card per position listing its candidates. -->
     <div class="space-y-6 xl:col-span-2">
       <?php foreach ($positions as $p):
           $cands = db_all('SELECT * FROM candidates WHERE position_id = ? ORDER BY name', [$p['id']]); ?>
@@ -109,6 +135,7 @@ if (!$elections): ?>
     </div>
 
     <?php if ($positions && ($edit || !$locked)): ?>
+    <!-- Right: add-candidate form, or edit form when an Edit button was clicked. -->
     <section class="card h-fit p-5">
       <h2 class="mb-4 font-semibold text-slate-900"><?= $edit ? 'Edit candidate' : 'Add candidate' ?></h2>
       <form method="post" enctype="multipart/form-data" class="space-y-4">

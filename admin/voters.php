@@ -1,29 +1,45 @@
 <?php
+/**
+ * Admin Voters page — manage student voter accounts.
+ * Admins add voters (with a temporary password), edit details, disable or
+ * re-enable sign-in, reset passwords, and delete accounts that never voted.
+ * The table shows who has voted (never who they voted for) and supports
+ * search, status filter, and paging through large lists.
+ */
+// Load shared page tools (login checks, database helpers, page layout).
 require __DIR__ . '/../includes/layout.php';
+// Only signed-in admins may manage voters.
 $u = require_login('admin');
 
+// Handle the Add / Edit / Disable / Reset-password / Delete buttons.
 if (is_post()) {
+    // Safety check: confirm the form really came from our site (blocks forged requests).
     csrf_check();
     $a = post('action');
     $id = (int) post('id');
     try {
+        // "Save" covers both adding a new voter and editing an existing one.
         if ($a === 'save') {
             $sid = post('student_id');
             $name = post('name');
             $email = post('email');
             $dept = post('department');
             $pw = (string) ($_POST['password'] ?? '');
+            // Checks: valid student ID format, name present, valid email, no duplicate ID.
             if (!preg_match('~^[A-Za-z0-9/_.\-]{3,30}$~', $sid)) throw new RuntimeException('Student ID must be 3–30 characters: letters, numbers and / _ . - only.');
             if ($name === '' || strlen($name) > 100) throw new RuntimeException('Name is required (100 characters max).');
             if ($email !== '' && (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 150)) throw new RuntimeException('Enter a valid email address or leave it blank.');
             if (strlen($dept) > 100) throw new RuntimeException('Department is too long.');
             if (db_val('SELECT 1 FROM users WHERE student_id = ? AND id != ?', [$sid, $id])) throw new RuntimeException('That student ID is already registered.');
             if ($id) {
+                // Editing: update the existing student record.
                 if (!db_val("SELECT 1 FROM users WHERE id = ? AND role = 'student'", [$id])) throw new RuntimeException('Voter not found.');
                 db_run('UPDATE users SET student_id=?, name=?, email=?, department=? WHERE id=?', [$sid, $name, $email, $dept, $id]);
+                // audit() writes a line in the security log: who did what and when.
                 audit('VOTER_UPDATED', $sid);
                 flash('success', 'Voter updated.');
             } else {
+                // Adding: create the account with a password (typed or auto-generated) stored scrambled.
                 $generated = $pw === '';
                 if ($generated) $pw = random_password();
                 elseif ($err = password_error($pw)) throw new RuntimeException($err);
@@ -33,20 +49,24 @@ if (is_post()) {
                 flash('success', 'Voter added.' . ($generated ? " Temporary password for $sid: $pw — copy it now, it will not be shown again." : ''));
             }
         } else {
+            // Other buttons act on one existing voter: look them up first.
             $v = db_one("SELECT * FROM users WHERE id = ? AND role = 'student'", [$id]);
             if (!$v) throw new RuntimeException('Voter not found.');
             if ($a === 'toggle') {
+                // Disable/Enable: switches whether the student can sign in.
                 $new = $v['status'] === 'active' ? 'inactive' : 'active';
                 db_run('UPDATE users SET status = ? WHERE id = ?', [$new, $id]);
                 audit($new === 'active' ? 'VOTER_ENABLED' : 'VOTER_DISABLED', $v['student_id']);
                 flash('success', $v['name'] . ($new === 'active' ? ' can now sign in.' : ' has been disabled.'));
             } elseif ($a === 'reset') {
+                // Reset password: set a new temporary password and clear lockouts from failed logins.
                 $pw = random_password();
                 db_run('UPDATE users SET password = ? WHERE id = ?', [password_hash($pw, PASSWORD_DEFAULT), $id]);
                 db_run('DELETE FROM login_attempts WHERE identifier = ?', [strtolower($v['student_id'])]);
                 audit('VOTER_PASSWORD_RESET', $v['student_id']);
                 flash('success', "New temporary password for {$v['student_id']}: $pw — copy it now, it will not be shown again.");
             } elseif ($a === 'delete') {
+                // Delete: only allowed if the voter never voted, so ballot history is never lost.
                 if ((int) db_val('SELECT COUNT(*) FROM ballots WHERE voter_id = ?', [$id])) throw new RuntimeException('This voter has voted, so the record must be kept. Disable the account instead.');
                 db_run('DELETE FROM users WHERE id = ?', [$id]);
                 audit('VOTER_DELETED', $v['student_id']);
@@ -54,11 +74,14 @@ if (is_post()) {
             }
         }
     } catch (RuntimeException $ex) {
+        // If any check failed, show its message instead of saving anything.
         flash('error', $ex->getMessage());
     }
+    // Go back to the list so refreshing does not re-submit the form.
     redirect('admin/voters.php');
 }
 
+// Read search/filter/page choices from the address bar, then build the voter query.
 $q = get_str('q');
 $status = in_array(get_str('status'), ['active', 'inactive'], true) ? get_str('status') : '';
 $elections = db_all('SELECT id,title FROM elections ORDER BY id DESC');
@@ -71,6 +94,7 @@ $where = "role = 'student'";
 $params = [];
 if ($q !== '') { $where .= ' AND (student_id LIKE ? OR name LIKE ?)'; $params[] = "%$q%"; $params[] = "%$q%"; }
 if ($status !== '') { $where .= ' AND status = ?'; $params[] = $status; }
+// Count matching voters for paging, then fetch just this page (20 rows) with a voted flag.
 $total = (int) db_val("SELECT COUNT(*) FROM users WHERE $where", $params);
 $rows = db_all("SELECT u.*, (SELECT COUNT(*) FROM ballots b WHERE b.election_id = ? AND b.voter_id = u.id) AS voted
     FROM users u WHERE $where ORDER BY student_id LIMIT $per OFFSET " . (($page - 1) * $per), array_merge([$eid], $params));
@@ -78,13 +102,17 @@ $edit = isset($_GET['edit']) ? db_one("SELECT * FROM users WHERE id = ? AND role
 
 function mini_form(string $action, int $id, string $label, string $cls = 'btn-outline', string $confirm = ''): string
 {
+    // Tiny helper that builds each row button (Enable/Reset/Delete) with a safety token.
+    // csrf_field() adds a hidden token proving the form came from our site.
     return '<form method="post" class="inline" ' . ($confirm ? 'data-confirm="' . e($confirm) . '"' : '') . '>' . csrf_field()
         . '<input type="hidden" name="action" value="' . e($action) . '"><input type="hidden" name="id" value="' . $id . '">'
         . '<button class="btn btn-sm ' . $cls . '" type="submit">' . e($label) . '</button></form>';
 }
 
+// Draw the page frame (header, menu).
 layout_start('Voters', 'voters');
 ?>
+<!-- Collapsible add/edit voter form; opens automatically when editing. -->
 <details class="card mb-6" <?= $edit ? 'open' : '' ?>>
   <summary class="cursor-pointer px-5 py-4 font-semibold text-slate-900"><?= $edit ? 'Edit voter' : 'Add voter' ?></summary>
   <form method="post" class="grid gap-4 border-t border-slate-100 p-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -103,6 +131,7 @@ layout_start('Voters', 'voters');
   </form>
 </details>
 
+<!-- Search and filter row: text search, active/inactive, and which election the Voted column refers to. -->
 <form method="get" class="mb-4 grid gap-3 sm:grid-cols-4">
   <input class="input sm:col-span-2" type="search" name="q" value="<?= e($q) ?>" placeholder="Search by student ID or name" aria-label="Search voters">
   <select class="input" name="status" aria-label="Filter by status">
@@ -117,6 +146,7 @@ layout_start('Voters', 'voters');
   <button class="btn btn-outline sm:col-span-4 sm:w-fit" type="submit">Apply filters</button>
 </form>
 
+<!-- Voter table with per-row actions; pager() below splits long lists into pages. -->
 <div class="card overflow-x-auto">
   <table class="min-w-full divide-y divide-slate-100">
     <thead class="bg-slate-50"><tr><th class="th">Student ID</th><th class="th">Name</th><th class="th">Department</th><th class="th">Status</th><th class="th">Voted</th><th class="th">Actions</th></tr></thead>

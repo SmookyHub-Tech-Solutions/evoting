@@ -1,41 +1,100 @@
 <?php
+/**
+ * Database helper — plain-English overview:
+ * Think of this file as the app's filing cabinet manager. It opens the
+ * SQLite database file, creates the tables (users, elections, votes, etc.),
+ * adds safety rules, and puts in a starting admin account plus optional demo data.
+ * Non-technical meaning: without this file, the app would have nowhere to
+ * store students, elections, or votes.
+ * Technical note: uses PDO with SQLite, foreign keys ON, exceptions ON,
+ * and CREATE TABLE / TRIGGER IF NOT EXISTS so setup is safe to re-run.
+ */
+
+// --- Connection ---
+/**
+ * Open (or reuse) the database connection.
+ * Plain English: gets the one shared link to the voting database file.
+ * Technical note: static singleton PDO, creates data/ folder if needed, sets
+ * foreign_keys + busy_timeout, then runs init_schema() and seed_defaults().
+ */
 function db(): PDO
 {
     static $pdo = null;
     if ($pdo instanceof PDO) {
         return $pdo;
     }
+    // Plain explanation: make sure the folder that holds the database exists.
     $dir = dirname(DB_PATH);
     if (!is_dir($dir)) {
         mkdir($dir, 0775, true);
     }
+    // Plain explanation: open the SQLite file with safe, strict settings.
     $pdo = new PDO('sqlite:' . DB_PATH, null, null, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
     ]);
+    // Plain explanation: enforce link rules + wait briefly if the file is busy.
     $pdo->exec('PRAGMA foreign_keys = ON');
     $pdo->exec('PRAGMA busy_timeout = 5000');
+    // Plain explanation: build tables and default rows on first run.
     init_schema($pdo);
     seed_defaults($pdo);
     return $pdo;
 }
 
+// --- Tiny query helpers ---
+/**
+ * Run a query with values plugged in safely.
+ * Plain English: sends a question/command to the database without risking injection.
+ * Technical note: prepared statement via db()->prepare() + execute($p).
+ */
 function db_run(string $sql, array $p = []): PDOStatement
 {
     $st = db()->prepare($sql);
     $st->execute($p);
     return $st;
 }
+
+/**
+ * Fetch all matching rows as a list.
+ * Plain English: returns every record found, e.g. all candidates.
+ * Technical note: wrapper around db_run()->fetchAll().
+ */
 function db_all(string $sql, array $p = []): array { return db_run($sql, $p)->fetchAll(); }
+
+/**
+ * Fetch one matching row, or null if none.
+ * Plain English: returns a single record, e.g. one election.
+ * Technical note: returns null (not false) when nothing is found.
+ */
 function db_one(string $sql, array $p = []): ?array
 {
     $r = db_run($sql, $p)->fetch();
     return $r === false ? null : $r;
 }
+
+/**
+ * Fetch a single value (first column of first row).
+ * Plain English: returns just one number or word, e.g. a vote count.
+ * Technical note: wrapper around PDOStatement::fetchColumn().
+ */
 function db_val(string $sql, array $p = []) { return db_run($sql, $p)->fetchColumn(); }
+
+/**
+ * Get the ID of the last inserted row.
+ * Plain English: tells you the new record number after adding something.
+ * Technical note: wrapper around PDO::lastInsertId().
+ */
 function db_id(): int { return (int) db()->lastInsertId(); }
 
+/**
+ * Create all tables and indexes if they do not exist yet.
+ * Plain English: builds the empty filing cabinets and labels for users,
+ * elections, positions, candidates, ballots, votes, logs, and settings.
+ * Technical note: runs one big CREATE TABLE IF NOT EXISTS batch plus indexes;
+ * ballots hold participation proof only, votes hold anonymous choices.
+ */
 function init_schema(PDO $pdo): void
 {
     $pdo->exec("
@@ -117,7 +176,11 @@ function init_schema(PDO $pdo): void
     CREATE INDEX IF NOT EXISTS idx_login_attempts ON login_attempts(identifier, created_at);
     ");
 
-    // Database-level integrity rules (defence in depth beyond the PHP checks).
+    // --- Safety triggers ---
+    // Plain explanation: database-level locks that stop cheating even if
+    // app code has a bug — votes only when open, and past votes can never
+    // be changed or deleted.
+    // Technical note: BEFORE INSERT/UPDATE/DELETE triggers using RAISE(ABORT).
     $triggers = [
         "CREATE TRIGGER IF NOT EXISTS trg_ballot_open BEFORE INSERT ON ballots
          WHEN (SELECT status FROM elections WHERE id = NEW.election_id) != 'OPEN'
@@ -134,28 +197,41 @@ function init_schema(PDO $pdo): void
         "CREATE TRIGGER IF NOT EXISTS trg_ballots_no_delete BEFORE DELETE ON ballots
          BEGIN SELECT RAISE(ABORT, 'Ballots cannot be deleted'); END",
     ];
+    // Plain explanation: install each safety rule one by one.
     foreach ($triggers as $t) {
         $pdo->exec($t);
     }
 }
 
+/**
+ * Insert starting data on a brand-new database.
+ * Plain English: adds default settings, the first admin account, and (if
+ * allowed) sample students plus a sample election so the app is usable.
+ * Technical note: INSERT OR IGNORE for settings; skips demo rows when
+ * SEED_DEMO is false; passwords are hashed with password_hash().
+ */
 function seed_defaults(PDO $pdo): void
 {
+    // Plain explanation: basic school name, results rule, and login timeout.
     $pdo->exec("INSERT OR IGNORE INTO settings(name,val) VALUES
         ('institution_name','University E-Voting'),
         ('results_visibility','after_close'),
         ('session_timeout','15')");
 
+    // Plain explanation: if any user already exists, the setup is done — stop here.
     if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() > 0) {
         return;
     }
     $now = date('Y-m-d H:i:s');
+    // Plain explanation: create the first election officer (admin) account.
     $user = $pdo->prepare('INSERT INTO users(student_id,name,email,department,password,role,status,created_at) VALUES (?,?,?,?,?,?,?,?)');
     $user->execute(['admin', 'Election Officer', 'admin@university.edu', 'Electoral Commission', password_hash('Admin@12345', PASSWORD_DEFAULT), 'admin', 'active', $now]);
 
+    // Plain explanation: skip sample students/election on a real live server.
     if (!SEED_DEMO) {
         return;
     }
+    // Plain explanation: add six example students (one marked inactive).
     $studentHash = password_hash('Student@123', PASSWORD_DEFAULT);
     foreach ([
         ['STU001', 'Ahmed Bello', 'Computer Science', 'active'],
@@ -168,6 +244,7 @@ function seed_defaults(PDO $pdo): void
         $user->execute([$sid, $name, strtolower($sid) . '@student.university.edu', $dept, $studentHash, 'student', $status, $now]);
     }
 
+    // Plain explanation: create one open sample election for testing.
     $pdo->prepare("INSERT INTO elections(title,description,start_time,end_time,status,created_at) VALUES (?,?,?,?, 'OPEN', ?)")
         ->execute([
             'Student Leadership Election 2026',
@@ -177,8 +254,10 @@ function seed_defaults(PDO $pdo): void
             $now,
         ]);
     $eid = (int) $pdo->lastInsertId();
+    // Plain explanation: prepare helpers to add job roles and people running.
     $pos = $pdo->prepare('INSERT INTO positions(election_id,name,description) VALUES (?,?,?)');
     $cand = $pdo->prepare('INSERT INTO candidates(position_id,name,student_id,department,faculty,bio,status) VALUES (?,?,?,?,?,?, \'active\')');
+    // Plain explanation: sample roles (President, etc.) with their candidates.
     $data = [
         'President' => [
             ['John Smith', 'C101', 'Computer Science', 'Computing', 'Committed to better lab access and reliable campus Wi-Fi.'],
@@ -194,6 +273,7 @@ function seed_defaults(PDO $pdo): void
             ['Olivia Davis', 'C107', 'Economics', 'Social Sciences', 'Pledges strict, open expense tracking.'],
         ],
     ];
+    // Plain explanation: save each role and its candidates to the database.
     foreach ($data as $pname => $cands) {
         $pos->execute([$eid, $pname, null]);
         $pid = (int) $pdo->lastInsertId();

@@ -1,8 +1,30 @@
 <?php
+/**
+ * Home page (index.php) — plain-language guide.
+ *
+ * What this page is: the public welcome site anyone can open.
+ * It shows what the voting system is about and lists elections
+ * that are not drafts (open, upcoming, or finished).
+ *
+ * How it works, step by step:
+ * 1. Loads shared setup (database, login check, helpers).
+ * 2. Checks if someone is already signed in.
+ * 3. Loads the school name and the list of visible elections,
+ *    showing open elections first.
+ * 4. Shows a welcome banner, the election list, trust highlights,
+ *    and a footer. Buttons change based on sign-in status.
+ */
+
+// Load shared setup: database connection, login helpers, and page tools.
 require __DIR__ . '/includes/bootstrap.php';
+// Check who is signed in right now (empty if this is a guest visitor).
 $u = current_user();
+// Read the school name for the page title (uses a default if not set).
 $inst = setting('institution_name', 'University E-Voting');
+// Load all public elections, sorted with open ones first, then upcoming.
+// Note for non-technical readers: this only reads information to display.
 $elections = db_all("SELECT * FROM elections WHERE status != 'DRAFT' ORDER BY CASE status WHEN 'OPEN' THEN 0 WHEN 'UPCOMING' THEN 1 ELSE 2 END, start_time DESC");
+// Count how many elections are currently open, for the banner message.
 $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
 ?><!DOCTYPE html>
 <html lang="en" class="h-full scroll-smooth">
@@ -15,6 +37,7 @@ $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
 <link rel="stylesheet" href="<?= e(url('assets/css/app.css')) ?>">
 </head>
 <body class="min-h-full bg-slate-50 font-sans text-slate-800 antialiased">
+<!-- Top banner: logo, school name, and a sign-in or dashboard button. -->
 <header class="relative overflow-hidden bg-navy text-white">
   <div class="bg-dots-white pointer-events-none absolute inset-0 opacity-30"></div>
   <div class="pointer-events-none absolute -right-32 -top-32 h-96 w-96 rounded-full bg-teal-500/20 blur-3xl"></div>
@@ -29,7 +52,8 @@ $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
       </span>
       <a class="btn btn-outline !border-white/20 !bg-white/10 !text-white backdrop-blur hover:!bg-white/20 btn-sm sm:!px-4 sm:!py-2 sm:!text-sm" href="<?= e(url($u ? home_for($u) : 'login.php')) ?>"><?= $u ? 'Go to dashboard →' : 'Sign in' ?></a>
     </nav>
-    <div class="grid items-center gap-10 pb-16 pt-8 lg:grid-cols-[1.1fr_.9fr] lg:pb-24 lg:pt-12">
+    <!-- Welcome message: explains voting in 3 simple steps plus key promises. -->
+  <div class="grid items-center gap-10 pb-16 pt-8 lg:grid-cols-[1.1fr_.9fr] lg:pb-24 lg:pt-12">
       <div class="animate-fade-up">
         <p class="inline-flex items-center gap-2 rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-semibold tracking-wide text-teal-100 ring-1 ring-white/15">
           <span class="h-2 w-2 rounded-full <?= $openCount ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400' ?>"></span>
@@ -65,6 +89,7 @@ $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
   <div class="relative h-6 bg-slate-50 [clip-path:ellipse(60%_100%_at_50%_100%)]"></div>
 </header>
 
+<!-- Main content: the list of elections and why the system is trustworthy. -->
 <main id="elections" class="mx-auto max-w-6xl px-6 py-12 lg:py-16">
   <div class="flex flex-wrap items-end justify-between gap-4">
     <div>
@@ -75,6 +100,7 @@ $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
   </div>
 
   <?php if (!$elections): ?>
+    <!-- Shown only when no elections have been announced yet. -->
     <div class="empty-state mt-8">
       <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
         <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path d="M8 3v4m8-4v4M4 10h16M5 5h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1z"/></svg>
@@ -84,8 +110,10 @@ $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
     </div>
   <?php endif; ?>
 
+  <!-- One card per election: title, status, dates, and a vote button. -->
   <div class="mt-6 grid gap-5 md:grid-cols-2">
     <?php foreach ($elections as $el): ?>
+      <!-- Single election card: repeats once for each election. -->
       <article class="card card-hover animate-fade-up p-6">
         <div class="flex items-start justify-between gap-3">
           <h3 class="text-[17px] font-bold tracking-tight text-slate-900"><?= e($el['title']) ?></h3>
@@ -97,14 +125,17 @@ $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
           <div class="flex gap-3"><dt class="w-16 shrink-0 font-semibold text-slate-500">Closes</dt><dd><?= e(fmt_dt($el['end_time'])) ?></dd></div>
         </dl>
         <?php if ($el['status'] === 'OPEN' && !$u): ?>
+          <!-- Guest viewing an open election: invite them to sign in. -->
           <a href="<?= e(url('login.php')) ?>" class="btn btn-primary mt-5 w-full">Sign in to vote</a>
         <?php elseif ($el['status'] === 'OPEN' && $u): ?>
+          <!-- Signed-in user viewing an open election: send them to vote. -->
           <a href="<?= e(url(home_for($u))) ?>" class="btn btn-primary mt-5 w-full">Go vote now</a>
         <?php endif; ?>
       </article>
     <?php endforeach; ?>
   </div>
 
+  <!-- Three trust highlights: secrecy, one-vote rule, and audit trail. -->
   <section class="mt-14 grid gap-5 md:grid-cols-3">
     <?php foreach ([
       ['Secret by design', 'Your name is stored separately from your choices. Tallies never reveal individual ballots.', 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM9 12l2 2 4-4'],
@@ -120,6 +151,7 @@ $openCount = count(array_filter($elections, fn($e) => $e['status'] === 'OPEN'));
   </section>
 </main>
 
+<!-- Bottom footer: school name and short fairness reminder. -->
 <footer class="border-t border-slate-200 bg-white">
   <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-6 py-6 text-[13px] text-slate-500 sm:flex-row">
     <p><span class="font-bold text-navy"><?= e($inst) ?></span> · Secure student elections</p>

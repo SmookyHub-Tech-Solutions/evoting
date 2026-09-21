@@ -1,23 +1,37 @@
 <?php
+/**
+ * Admin Dashboard — election overview page.
+ * Shows at a glance: how many voters are registered, how many votes were
+ * cast in the current election, turnout percentage, and recent security
+ * activity. Also links to every other admin task (voters, candidates, etc.).
+ */
+// Load shared page tools (login checks, database helpers, page layout).
 require __DIR__ . '/../includes/layout.php';
+// Only signed-in admins may view this page; others are sent to the login screen.
 $u = require_login('admin');
 
+// Pick which election to spotlight: the open one if there is one, otherwise the newest.
 $focus = db_one("SELECT * FROM elections WHERE status = 'OPEN' ORDER BY end_time LIMIT 1")
     ?: db_one('SELECT * FROM elections ORDER BY id DESC LIMIT 1');
+// Count active student voters, votes cast in the spotlight election, and turnout %.
 $voters = (int) db_val("SELECT COUNT(*) FROM users WHERE role = 'student' AND status = 'active'");
 $cast = $focus ? (int) db_val('SELECT COUNT(*) FROM ballots WHERE election_id = ?', [$focus['id']]) : 0;
 $pct = $voters ? round($cast / $voters * 100, 1) : 0;
+// Fetch the 8 most recent security log entries for the activity table below.
 $recent = db_all('SELECT * FROM audit_logs ORDER BY id DESC LIMIT 8');
 
+// Draw the page frame (header, menu) and title shown in the browser tab.
 layout_start('Dashboard', 'dashboard', $focus ? 'Focus: ' . $focus['title'] : 'Election overview');
 ?>
 <?php if (!$focus): ?>
+  <!-- Friendly empty state: shown only when no election exists yet. -->
   <div class="card animate-fade-up mb-6 flex flex-col items-center justify-between gap-4 p-6 sm:flex-row sm:p-7">
     <div><p class="font-bold text-slate-900">No elections yet</p><p class="mt-1 text-sm text-slate-500">Create your first election to start accepting votes.</p></div>
     <a class="btn btn-primary" href="<?= e(url('admin/elections.php')) ?>">Create election →</a>
   </div>
 <?php endif; ?>
 
+<!-- Four summary cards: voter total, votes cast, turnout bar, and election status. -->
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
   <div class="stat-card animate-fade-up">
     <div class="flex items-center justify-between"><p class="text-[13px] font-semibold text-slate-500">Registered voters</p><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-600/10"><?= icon('users', 'h-5 w-5') ?></span></div>
@@ -45,8 +59,9 @@ layout_start('Dashboard', 'dashboard', $focus ? 'Focus: ' . $focus['title'] : 'E
   <h2 class="text-[15px] font-bold text-slate-900">Quick actions</h2>
   <span class="text-xs text-slate-500">Manage the full cycle</span>
 </div>
+<!-- Shortcut tiles linking to each admin task (voters, candidates, results, ...). -->
 <div class="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-  <?php foreach ([
+  <?php foreach ([ // Each row below is: page link, title, short description, icon, tile colour.
       ['admin/voters.php', 'Manage voters', 'Add, disable and reset student accounts', 'users', 'bg-blue-50 text-blue-700 ring-blue-600/10'],
       ['admin/candidates.php', 'Manage candidates', 'Photos, bios and ballot placement', 'id', 'bg-teal-50 text-teal-700 ring-teal-600/10'],
       ['admin/positions.php', 'Manage positions', 'Define what students vote for', 'briefcase', 'bg-amber-50 text-amber-700 ring-amber-600/15'],
@@ -62,6 +77,7 @@ layout_start('Dashboard', 'dashboard', $focus ? 'Focus: ' . $focus['title'] : 'E
   <?php endforeach; ?>
 </div>
 
+<!-- Latest security events (logins, votes, admin changes) with a link to the full log. -->
 <div class="mb-3 mt-10 flex items-center justify-between">
   <h2 class="text-[15px] font-bold text-slate-900">Recent security activity</h2>
   <a href="<?= e(url('admin/audit-logs.php')) ?>" class="text-[13px] font-semibold text-blue-700 hover:underline">View all →</a>
